@@ -12,7 +12,7 @@ export default function Review() {
     if (storedData) {
       setData(JSON.parse(storedData));
     } else {
-      router.push("/"); // Back to home if no data found
+      router.push("/"); 
     }
   }, [router]);
 
@@ -30,7 +30,7 @@ export default function Review() {
         localStorage.removeItem("orderData");
         router.push("/");
       } else {
-        alert("Failed to send email. Please check your .env settings.");
+        alert("Failed to send email.");
       }
     } catch (error) {
       alert("Error sending report.");
@@ -39,11 +39,38 @@ export default function Review() {
     }
   };
 
+  const handleSaveDraft = async () => {
+    setLoading(true);
+    try {
+      const payload = { ...data };
+      
+      const res = await fetch("/api/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json();
+
+      if (res.ok) {
+        alert("Draft saved successfully! You can access it from the drafts page.");
+        localStorage.removeItem("orderData");
+        router.push("/");
+      } else {
+        alert("Failed to save draft");
+      }
+    } catch (error) {
+      alert("Error saving draft");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!data) return <p style={{textAlign: "center", marginTop: "50px"}}>Loading...</p>;
 
-  // Flatten the items so we only show what has a quantity > 0
+  // Filter to show items with non-zero quantities (including negative)
   const selectedItems = Object.entries(data.formData).flatMap(([cat, items]) =>
-    Object.values(items).filter((item) => item.quantity > 0)
+    Object.values(items).filter((item) => item.quantity !== 0)
   );
 
   return (
@@ -56,8 +83,10 @@ export default function Review() {
       <div style={styles.infoSection}>
         <p><strong>Name:</strong> {data.name}</p>
         <p><strong>Email:</strong> {data.email}</p>
-        <p><strong>Engineer:</strong> {data.engineer}</p>
+        <p><strong>Store:</strong> {data.store}</p>
+        {data.engineer && <p><strong>Engineer:</strong> {data.engineer}</p>}
         {data.vender && <p><strong>Vendor:</strong> {data.vender}</p>}
+        {data.orderNo && <p><strong>Order No:</strong> {data.orderNo}</p>}
       </div>
 
       <h3 style={styles.subheading}>Selected Materials</h3>
@@ -81,23 +110,30 @@ export default function Review() {
           </tbody>
         </table>
       ) : (
-        <p style={{textAlign: "center", color: "red"}}>No items selected!</p>
+        <p style={{textAlign: "center", color: "red", fontWeight: "bold"}}>No items selected!</p>
       )}
 
       <div style={styles.buttonRow}>
         <button 
           onClick={() => router.back()} 
-          style={styles.backButton}
+          style={styles.backButton} 
           disabled={loading}
         >
-          Edit
+          ← Edit
+        </button>
+        <button 
+          onClick={handleSaveDraft} 
+          style={styles.saveDraftButton}
+          disabled={loading || selectedItems.length === 0}
+        >
+          {loading ? "Saving..." : "💾 Save Draft"}
         </button>
         <button 
           onClick={handleConfirm} 
-          style={styles.confirmButton}
+          style={styles.confirmButton} 
           disabled={loading || selectedItems.length === 0}
         >
-          {loading ? "Sending..." : "Confirm & Send Email"}
+          {loading ? "Sending..." : "📧 Confirm & Send"}
         </button>
       </div>
     </div>
@@ -105,15 +141,84 @@ export default function Review() {
 }
 
 const styles = {
-  container: { padding: "2rem", maxWidth: "600px", margin: "20px auto", backgroundColor: "#fff", borderRadius: "12px", boxShadow: "0 4px 15px rgba(0,0,0,0.1)", fontFamily: "sans-serif" },
-  heading: { textAlign: "center", color: "#333" },
-  subheading: { marginTop: "20px", borderBottom: "2px solid #eee", paddingBottom: "10px" },
-  infoSection: { backgroundColor: "#f9f9f9", padding: "15px", borderRadius: "8px", lineHeight: "1.6" },
-  table: { width: "100%", borderCollapse: "collapse", marginTop: "15px" },
-  thRow: { backgroundColor: "#eee" },
-  th: { padding: "10px", textAlign: "left", borderBottom: "2px solid #ddd" },
-  td: { padding: "10px", borderBottom: "1px solid #eee" },
-  buttonRow: { marginTop: "30px", display: "flex", gap: "15px" },
-  backButton: { flex: 1, padding: "12px", backgroundColor: "#6c757d", color: "#white", border: "none", borderRadius: "6px", cursor: "pointer", color: "white" },
-  confirmButton: { flex: 2, padding: "12px", backgroundColor: "#28a745", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }
+  container: { 
+    padding: "1.5rem", 
+    maxWidth: "600px", 
+    margin: "20px auto", 
+    backgroundColor: "#fff", 
+    borderRadius: "12px", 
+    boxShadow: "0 4px 15px rgba(0,0,0,0.1)", 
+    fontFamily: "sans-serif" 
+  },
+  heading: { 
+    textAlign: "center", 
+    color: "#333" 
+  },
+  subheading: { 
+    marginTop: "20px", 
+    borderBottom: "2px solid #eee", 
+    paddingBottom: "10px" 
+  },
+  infoSection: { 
+    backgroundColor: "#f9f9f9", 
+    padding: "15px", 
+    borderRadius: "8px", 
+    lineHeight: "1.6" 
+  },
+  table: { 
+    width: "100%", 
+    borderCollapse: "collapse", 
+    marginTop: "15px" 
+  },
+  thRow: { 
+    backgroundColor: "#eee" 
+  },
+  th: { 
+    padding: "10px", 
+    textAlign: "left", 
+    borderBottom: "2px solid #ddd" 
+  },
+  td: { 
+    padding: "10px", 
+    borderBottom: "1px solid #eee" 
+  },
+  buttonRow: { 
+    marginTop: "30px", 
+    display: "flex", 
+    gap: "10px",
+    flexWrap: "wrap",
+  },
+  backButton: { 
+    flex: 1,
+    minWidth: "80px",
+    padding: "12px", 
+    backgroundColor: "#6c757d", 
+    color: "white", 
+    border: "none", 
+    borderRadius: "6px", 
+    cursor: "pointer",
+    fontWeight: "600",
+  },
+  saveDraftButton: {
+    flex: 1,
+    minWidth: "100px",
+    padding: "12px",
+    backgroundColor: "#ffc107",
+    color: "#333",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+  confirmButton: { 
+    flex: 1,
+    minWidth: "120px",
+    padding: "12px", 
+    backgroundColor: "#28a745", 
+    color: "white", 
+    border: "none", 
+    borderRadius: "6px", 
+    cursor: "pointer", 
+    fontWeight: "bold" 
+  },
 };

@@ -1,9 +1,15 @@
 import nodemailer from "nodemailer";
+import dbConnect from "../../lib/mongodb";
+import Draft from "../../models/Draft";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  if (req.method !== "POST") {
+    return res.status(405).send("Method Not Allowed");
+  }
 
-  const { name, email, store, orderNo, formData, engineer, vender } = req.body;
+  await dbConnect();
+
+  const { _id, name, email, store, orderNo, formData, engineer, vender } = req.body;
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -13,41 +19,66 @@ export default async function handler(req, res) {
     },
   });
 
+  const recipientUpper = name ? name.toUpperCase() : "";
+
   const itemTable = Object.entries(formData)
     .map(([category, items]) => {
-      const itemEntries = Object.values(items).filter((item) => item.quantity > 0);
-      if (itemEntries.length === 0) return '';
+      const validItems = Object.values(items).filter(
+        (item) => item.quantity && item.quantity !== 0
+      );
 
-      return itemEntries.map((item) => `
+      if (validItems.length === 0) return "";
+
+      return validItems
+        .map(
+          (item) => `
           <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;">${item.id}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${item.name}</td>
-            <td align="center" style="border: 1px solid #ddd; padding: 8px;">${item.quantity}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${category}</td>
+            <td>${item.id}</td>
+            <td>${item.name}</td>
+            <td align="center">${item.quantity}</td>
+            <td></td>
+            <td></td>
+            <td align="center">0003</td>
+            <td align="center">TD02</td>
+            <td align="center">0010</td>
+            <td></td>
+            <td></td>
+            <td>${recipientUpper}</td>
           </tr>
-        `).join('');
+        `
+        )
+        .join("");
     })
-    .join('');
+    .join("");
 
   const mailOptions = {
     from: process.env.EMAIL_USER,
-    to: email, 
-    subject: `Material Report: ${name} - ${new Date().toLocaleDateString()}`,
+    to: email,
+    subject: `Recipient ${name} & Engineer ${engineer} Order Confirmation`,
     html: `
-      <h3>Material Submission Details</h3>
-      <p><strong>Submitted By:</strong> ${name}</p>
-      <p><strong>Store/Site:</strong> ${store}</p>
+      <p><strong>Recipient Name:</strong> ${name}</p>
+      <p><strong>Store Location:</strong> ${store}</p>
       <p><strong>Engineer:</strong> ${engineer}</p>
       <p><strong>Vendor:</strong> ${vender}</p>
-      
-      <h4>Items List</h4>
-      <table style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;">
+      ${orderNo ? `<p><strong>Order Number:</strong> ${orderNo}</p>` : ""}
+
+      <h3>Order Details</h3>
+
+      <table border="1" cellpadding="5" cellspacing="0"
+        style="border-collapse: collapse; width: 100%; font-size: 12px;">
         <thead>
-          <tr style="background-color: #033f85; color: white;">
-            <th style="padding: 10px; border: 1px solid #ddd;">ID</th>
-            <th style="padding: 10px; border: 1px solid #ddd;">Description</th>
-            <th style="padding: 10px; border: 1px solid #ddd;">Qty / Weight</th>
-            <th style="padding: 10px; border: 1px solid #ddd;">Category</th>
+          <tr style="background-color: #e9c46a;">
+            <th>Component</th>
+            <th>Description</th>
+            <th>Reqmnt Qnt</th>
+            <th>UM</th>
+            <th>LC</th>
+            <th>Sloc</th>
+            <th>Plnt</th>
+            <th>Act.</th>
+            <th>Batch</th>
+            <th>Proc. Category</th>
+            <th>Recipient</th>
           </tr>
         </thead>
         <tbody>
@@ -58,9 +89,34 @@ export default async function handler(req, res) {
   };
 
   try {
+    // Send email
     await transporter.sendMail(mailOptions);
+
+    // Mark draft as sent if _id is provided
+    if (_id) {
+      await Draft.findByIdAndUpdate(_id, {
+        status: 'sent',
+        sentAt: new Date(),
+      });
+    } else {
+      // Create a new record marked as sent
+      const draft = new Draft({
+        name,
+        email,
+        store,
+        orderNo,
+        formData,
+        engineer,
+        vender,
+        status: 'sent',
+        sentAt: new Date(),
+      });
+      await draft.save();
+    }
+
     res.status(200).send("Email sent!");
   } catch (error) {
+    console.error("Email Error:", error);
     res.status(500).send("Error sending email.");
   }
 }
