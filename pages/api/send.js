@@ -9,7 +9,7 @@ export default async function handler(req, res) {
 
   await dbConnect();
 
-  const { _id, name, email, store, orderNo, formData, engineer, vender } = req.body;
+  const { _id, name, email, store, orderNo, formData, vender } = req.body;
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -20,6 +20,7 @@ export default async function handler(req, res) {
   });
 
   const recipientUpper = name ? name.toUpperCase() : "";
+  const orderHeader = orderNo ? `${orderNo} ${name}` : name;
 
   const itemTable = Object.entries(formData)
     .map(([category, items]) => {
@@ -54,13 +55,11 @@ export default async function handler(req, res) {
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: email,
-    subject: `Recipient ${name} & Engineer ${engineer} Order Confirmation`,
+    subject: `Order Confirmation - ${orderHeader}`,
     html: `
-      <p><strong>Recipient Name:</strong> ${name}</p>
+      <h2>${orderHeader}</h2>
       <p><strong>Store Location:</strong> ${store}</p>
-      <p><strong>Engineer:</strong> ${engineer}</p>
-      <p><strong>Vendor:</strong> ${vender}</p>
-      ${orderNo ? `<p><strong>Order Number:</strong> ${orderNo}</p>` : ""}
+      ${vender ? `<p><strong>Vendor:</strong> ${vender}</p>` : ''}
 
       <h3>Order Details</h3>
 
@@ -106,7 +105,6 @@ export default async function handler(req, res) {
         store,
         orderNo,
         formData,
-        engineer,
         vender,
         status: 'sent',
         sentAt: new Date(),
