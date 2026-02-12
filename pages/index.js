@@ -26,7 +26,6 @@ export default function Home() {
     store: "",
     vender: "",
     orderNo: "",
-    engineer: "",
   });
 
   const [formData, setFormData] = useState({});
@@ -47,7 +46,6 @@ export default function Home() {
             store: parsed.store || "",
             vender: parsed.vender || "",
             orderNo: parsed.orderNo || "",
-            engineer: parsed.engineer || "",
           });
           if (parsed.formData) setFormData(parsed.formData);
           if (parsed._id) setDraftId(parsed._id);
@@ -184,15 +182,6 @@ export default function Home() {
           <option value="E stn -0503">E stn -0503</option>
           <option value="B stn 0500">B stn 0500</option>
         </select>
-
-        <label style={styles.label}>Engineer Name</label>
-        <input
-          style={styles.fullInput}
-          type="text"
-          value={userInfo.engineer}
-          onChange={(e) => handleUserChange("engineer", e.target.value)}
-          placeholder="Engineer Name"
-        />
 
         <label style={styles.label}>Vendor Name</label>
         <select
