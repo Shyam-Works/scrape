@@ -167,7 +167,7 @@ export default function Drafts() {
             <div key={draft._id} style={styles.draftCard}>
               <div style={styles.draftHeader}>
                 <div>
-                  <h3 style={styles.draftName}>{draft.name}</h3>
+                  <h3 style={styles.draftName}>{draft.orderNo ? `${draft.orderNo} ${draft.name}` : draft.name}</h3>
                   <p style={styles.draftEmail}>{draft.email}</p>
                 </div>
                 <span style={styles.badge}>{getItemCount(draft.formData)} items</span>
