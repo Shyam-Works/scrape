@@ -36,6 +36,7 @@ export default async function handler(req, res) {
       draftIds.push(draft._id);
       const orderNumber = index + 1;
       const recipientUpper = draft.name ? draft.name.toUpperCase() : "";
+      const orderHeader = draft.orderNo ? `${draft.orderNo} ${draft.name}` : draft.name;
 
       // Build item table for this order
       const itemTable = Object.entries(draft.formData || {})
@@ -72,16 +73,13 @@ export default async function handler(req, res) {
       combinedOrders += `
         <div style="margin-bottom: 40px; page-break-after: always;">
           <h2 style="background-color: #033f85; color: white; padding: 15px; margin: 0;">
-            Order #${orderNumber}
+            Order #${orderNumber}: ${orderHeader}
           </h2>
           
           <div style="background-color: #f9f9f9; padding: 15px; border: 1px solid #ddd;">
-            <p><strong>Recipient Name:</strong> ${draft.name}</p>
             <p><strong>Email:</strong> ${draft.email}</p>
             <p><strong>Store Location:</strong> ${draft.store}</p>
-            ${draft.engineer ? `<p><strong>Engineer:</strong> ${draft.engineer}</p>` : ''}
             ${draft.vender ? `<p><strong>Vendor:</strong> ${draft.vender}</p>` : ''}
-            ${draft.orderNo ? `<p><strong>Order Number:</strong> ${draft.orderNo}</p>` : ''}
           </div>
 
           <h3 style="margin-top: 20px;">Order Details</h3>
