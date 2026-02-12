@@ -21,10 +21,6 @@ const DraftSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
-  engineer: {
-    type: String,
-    default: '',
-  },
   formData: {
     type: mongoose.Schema.Types.Mixed,
     default: {},
@@ -48,11 +44,10 @@ const DraftSchema = new mongoose.Schema({
   },
   userId: {
     type: String,
-    default: 'default-user', // For simple single-user setup
+    default: 'default-user',
   }
 });
 
-// Update the updatedAt timestamp before saving
 DraftSchema.pre('save', function() {
   this.updatedAt = Date.now();
 });
