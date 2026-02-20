@@ -10,14 +10,12 @@ export default async function handler(req, res) {
   await dbConnect();
 
   try {
-    // Get all pending drafts
     const drafts = await Draft.find({ status: 'draft' }).sort({ createdAt: 1 });
 
     if (drafts.length === 0) {
       return res.status(400).json({ error: "No pending drafts to send" });
     }
 
-    // Get recipient email from request or use the first draft's email
     const recipientEmail = req.body.recipientEmail || drafts[0].email;
 
     const transporter = nodemailer.createTransport({
@@ -28,7 +26,6 @@ export default async function handler(req, res) {
       },
     });
 
-    // Build combined email with all orders
     let combinedOrders = "";
     const draftIds = [];
 
@@ -38,7 +35,6 @@ export default async function handler(req, res) {
       const recipientUpper = draft.name ? draft.name.toUpperCase() : "";
       const orderHeader = draft.orderNo ? `${draft.orderNo} ${draft.name}` : draft.name;
 
-      // Build item table for this order
       const itemTable = Object.entries(draft.formData || {})
         .map(([category, items]) => {
           const validItems = Object.values(items).filter(
@@ -56,7 +52,7 @@ export default async function handler(req, res) {
                 <td align="center">${item.quantity}</td>
                 <td></td>
                 <td></td>
-                <td align="center">0003</td>
+                <td align="center">${draft.store}</td>
                 <td align="center">TD02</td>
                 <td align="center">0010</td>
                 <td></td>
@@ -69,7 +65,6 @@ export default async function handler(req, res) {
         })
         .join("");
 
-      // Add this order to combined email
       combinedOrders += `
         <div style="margin-bottom: 40px; page-break-after: always;">
           <h2 style="background-color: #033f85; color: white; padding: 15px; margin: 0;">
@@ -109,7 +104,6 @@ export default async function handler(req, res) {
       `;
     });
 
-    // Create summary section
     const summary = `
       <div style="background-color: #033f85; color: white; padding: 20px; margin-bottom: 30px;">
         <h1 style="margin: 0;">Consolidated Scrap Material Report</h1>
@@ -149,10 +143,8 @@ export default async function handler(req, res) {
       `,
     };
 
-    // Send the combined email
     await transporter.sendMail(mailOptions);
 
-    // Mark all drafts as sent
     await Draft.updateMany(
       { _id: { $in: draftIds } },
       { 
