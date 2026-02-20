@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import items from "../data/items.json";
 import { useRouter } from "next/router";
 import Head from "next/head";
 
-// Vendor list (single source of truth)
 const VENDORS = [
   "Chief (22106)",
   "ANR (23784)",
@@ -19,393 +18,337 @@ const VENDORS = [
   "Manishbhai Rajnikantbhai Choksi (19681)",
 ];
 
-export default function Home() {
-  const [userInfo, setUserInfo] = useState({
-    name: "",
-    email: "",
-    store: "",
-    vender: "",
-    orderNo: "",
-  });
+const STORES = [
+  { value: "0501", label: "A stn", sub: "0501" },
+  { value: "9042", label: "D stn", sub: "9042" },
+  { value: "0503", label: "E stn", sub: "0503" },
+  { value: "0500", label: "B stn", sub: "0500" },
+];
 
+const STEPS = ["info", "items", "review"];
+
+export default function Home() {
+  const [step, setStep] = useState(0); // 0=info, 1=items, 2=done
+  const [userInfo, setUserInfo] = useState({ name: "", email: "", store: "", vender: "", orderNo: "" });
   const [formData, setFormData] = useState({});
   const [openCategory, setOpenCategory] = useState(null);
   const [draftId, setDraftId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showVendorSheet, setShowVendorSheet] = useState(false);
   const router = useRouter();
+  const itemsRef = useRef(null);
 
   useEffect(() => {
     const savedData = localStorage.getItem("orderData");
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
-        setTimeout(() => {
-          setUserInfo({
-            name: parsed.name || "",
-            email: parsed.email || "",
-            store: parsed.store || "",
-            vender: parsed.vender || "",
-            orderNo: parsed.orderNo || "",
-          });
-          if (parsed.formData) setFormData(parsed.formData);
-          if (parsed._id) setDraftId(parsed._id);
-        }, 0);
-      } catch (e) {
-        console.error("Error loading saved data", e);
-      }
+        setUserInfo({ name: parsed.name || "", email: parsed.email || "", store: parsed.store || "", vender: parsed.vender || "", orderNo: parsed.orderNo || "" });
+        if (parsed.formData) setFormData(parsed.formData);
+        if (parsed._id) setDraftId(parsed._id);
+      } catch (e) {}
     }
   }, []);
 
-  const handleUserChange = (field, value) => {
-    setUserInfo((prev) => ({ ...prev, [field]: value }));
-  };
+  const handleUserChange = (field, value) => setUserInfo(prev => ({ ...prev, [field]: value }));
 
   const handleInputChange = (category, itemName, value, id) => {
     let numValue = parseFloat(value);
-
-    if (!isNaN(numValue) && numValue > 0) {
-      numValue = numValue * -1;
-    }
-
-    setFormData((prev) => ({
+    if (!isNaN(numValue) && numValue > 0) numValue = numValue * -1;
+    setFormData(prev => ({
       ...prev,
       [category]: {
         ...(prev[category] || {}),
-        [id]: {
-          id,
-          name: itemName,
-          quantity: isNaN(numValue) ? 0 : numValue,
-        },
+        [id]: { id, name: itemName, quantity: isNaN(numValue) ? 0 : numValue },
       },
     }));
   };
 
-  const handleSaveDraft = async () => {
-    if (!userInfo.name.trim() || !userInfo.email.trim() || !userInfo.store) {
-      alert("Please enter Name, Email, and Store before saving.");
-      return;
-    }
+  const totalItems = Object.values(formData).reduce((acc, cat) => {
+    return acc + Object.values(cat).filter(i => i.quantity && i.quantity !== 0).length;
+  }, 0);
 
+  const canProceed = userInfo.name.trim() && userInfo.email.trim() && userInfo.store;
+
+  const handleSaveDraft = async () => {
     setSaving(true);
     try {
-      const payload = {
-        ...userInfo,
-        formData,
-      };
-
-      // If editing existing draft, include the ID
-      if (draftId) {
-        payload._id = draftId;
-      }
-
-      const res = await fetch("/api/drafts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
+      const payload = { ...userInfo, formData };
+      if (draftId) payload._id = draftId;
+      const res = await fetch("/api/drafts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
-
       if (res.ok) {
         setDraftId(data.draft._id);
-        alert("Draft saved successfully! You can come back later to complete it.");
-        
-        // Clear localStorage after saving to database
         localStorage.removeItem("orderData");
-      } else {
-        alert("Failed to save draft");
-      }
-    } catch (error) {
-      console.error("Error saving draft:", error);
-      alert("Error saving draft");
-    } finally {
-      setSaving(false);
-    }
+        alert("Draft saved!");
+      } else alert("Failed to save draft");
+    } catch { alert("Error saving draft"); }
+    finally { setSaving(false); }
   };
 
   const handleReview = () => {
-    if (!userInfo.name.trim() || !userInfo.email.trim() || !userInfo.store) {
-      alert("Please enter Name, Email, and Store.");
-      return;
-    }
-
     const data = { ...userInfo, formData };
     if (draftId) data._id = draftId;
-    
     localStorage.setItem("orderData", JSON.stringify(data));
     router.push("/review");
   };
 
+  // Flat search across all items
+  const allItems = Object.entries(items).flatMap(([cat, list]) => list.map(i => ({ ...i, category: cat })));
+  const filteredItems = searchTerm.length > 1 ? allItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || i.id.toLowerCase().includes(searchTerm.toLowerCase())) : [];
+
+  const selectedStore = STORES.find(s => s.value === userInfo.store);
+
   return (
-    <div style={styles.container}>
+    <div style={s.root}>
       <Head>
-        <title>Scrap Material Report</title>
+        <title>Scrap Tracker</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </Head>
 
-      <div style={styles.topBar}>
-        <h1 style={styles.heading}>Scrap Material Tracker</h1>
-        <button onClick={() => router.push("/login")} style={styles.viewDraftsButton}>
-          📋 View Drafts
-        </button>
+      {/* Header */}
+      <div style={s.header}>
+        <div>
+          <div style={s.headerTitle}>Scrap Tracker</div>
+          {draftId && <div style={s.draftBadge}>● Draft saved</div>}
+        </div>
+        <button onClick={() => router.push("/login")} style={s.draftsBtn}>Drafts</button>
       </div>
 
-      <div style={styles.inputContainer}>
-        <h2 style={styles.sectionTitle}>User Information</h2>
-
-        <label style={styles.label}>Recipient Name*</label>
-        <input
-          style={styles.fullInput}
-          type="text"
-          value={userInfo.name}
-          onChange={(e) => handleUserChange("name", e.target.value)}
-          placeholder="Full Name"
-        />
-
-        <label style={styles.label}>Recipient Email*</label>
-        <input
-          style={styles.fullInput}
-          type="email"
-          value={userInfo.email}
-          onChange={(e) => handleUserChange("email", e.target.value)}
-          placeholder="your@gmail.com"
-        />
-
-        <label style={styles.label}>Store Location*</label>
-        <select
-          style={styles.fullInput}
-          value={userInfo.store}
-          onChange={(e) => handleUserChange("store", e.target.value)}
-        >
-          <option value="">-- Select Store --</option>
-          <option value="A stn -0501">A stn -0501</option>
-          <option value="D stn-9042">D stn-9042</option>
-          <option value="E stn -0503">E stn -0503</option>
-          <option value="B stn 0500">B stn 0500</option>
-        </select>
-
-        <label style={styles.label}>Vendor Name</label>
-        <select
-          style={styles.fullInput}
-          value={userInfo.vender}
-          onChange={(e) => handleUserChange("vender", e.target.value)}
-        >
-          <option value="">Select A Vendor</option>
-          {VENDORS.map((vendor) => (
-            <option key={vendor} value={vendor}>
-              {vendor}
-            </option>
-          ))}
-        </select>
-
-        <label style={styles.label}>Order Number</label>
-        <input
-          style={styles.fullInput}
-          type="text"
-          value={userInfo.orderNo}
-          onChange={(e) => handleUserChange("orderNo", e.target.value)}
-          placeholder="Optional"
-        />
+      {/* Step Pills */}
+      <div style={s.stepBar}>
+        {["1. Info", "2. Materials", "3. Send"].map((label, i) => (
+          <div key={i} style={{ ...s.stepPill, ...(step === i ? s.stepActive : step > i ? s.stepDone : {}) }}>
+            {step > i ? "✓ " : ""}{label}
+          </div>
+        ))}
       </div>
 
-      <h2 style={styles.sectionTitle}>
-        Material List (Positive numbers become negative)
-      </h2>
+      {/* ── STEP 0: User Info ── */}
+      {step === 0 && (
+        <div style={s.card}>
+          <p style={s.cardLabel}>Who is submitting?</p>
 
-      {Object.entries(items).map(([category, itemList], index) => (
-        <div key={category} style={styles.categoryBox}>
-          <div
-            style={
-              index % 2 === 0
-                ? { ...styles.header, backgroundColor: "#033f85" }
-                : { ...styles.header, backgroundColor: "#373e5e" }
-            }
-            onClick={() =>
-              setOpenCategory(openCategory === category ? null : category)
-            }
-          >
-            <span>{category}</span>
-            <span>{openCategory === category ? "−" : "+"}</span>
+          <input style={s.input} type="text" placeholder="Your full name *" value={userInfo.name} onChange={e => handleUserChange("name", e.target.value)} />
+          <input style={s.input} type="email" placeholder="Email address *" value={userInfo.email} onChange={e => handleUserChange("email", e.target.value)} inputMode="email" autoCapitalize="none" />
+          <input style={s.input} type="text" placeholder="Order # (optional)" value={userInfo.orderNo} onChange={e => handleUserChange("orderNo", e.target.value)} />
+
+          <p style={s.cardLabel}>Store Location *</p>
+          <div style={s.storePicker}>
+            {STORES.map(store => (
+              <button key={store.value} onClick={() => handleUserChange("store", store.value)}
+                style={{ ...s.storeBtn, ...(userInfo.store === store.value ? s.storeBtnActive : {}) }}>
+                <span style={s.storeLetter}>{store.label}</span>
+                <span style={s.storeSub}>{store.sub}</span>
+              </button>
+            ))}
           </div>
 
-          {openCategory === category && (
-            <div style={styles.itemList}>
-              {itemList.map((item) => (
-                <div key={item.id} style={styles.itemRow}>
-                  <div style={{ flex: 2 }}>
-                    <div style={{ fontWeight: "bold" }}>{item.name}</div>
-                    <div style={{ fontSize: "0.8rem", color: "#666" }}>
-                      {item.id}
-                    </div>
+          <p style={s.cardLabel}>Vendor (optional)</p>
+          <button onClick={() => setShowVendorSheet(true)} style={s.vendorPickerBtn}>
+            <span style={{ color: userInfo.vender ? "#111" : "#999" }}>{userInfo.vender || "Select vendor..."}</span>
+            <span style={{ color: "#999" }}>›</span>
+          </button>
+
+          <button
+            onClick={() => { if (canProceed) setStep(1); else alert("Please fill Name, Email and Store."); }}
+            style={{ ...s.primaryBtn, opacity: canProceed ? 1 : 0.4 }}>
+            Next → Add Materials
+          </button>
+        </div>
+      )}
+
+      {/* ── STEP 1: Items ── */}
+      {step === 1 && (
+        <div>
+          {/* Summary bar */}
+          <div style={s.summaryBar}>
+            <span style={s.summaryText}>{selectedStore ? `${selectedStore.label} · ${selectedStore.sub}` : ""} · {totalItems} item{totalItems !== 1 ? "s" : ""}</span>
+            <button onClick={() => setStep(0)} style={s.editBtn}>Edit Info</button>
+          </div>
+
+          {/* Search */}
+          <div style={s.searchWrap}>
+            <span style={s.searchIcon}>🔍</span>
+            <input
+              style={s.searchInput}
+              type="search"
+              placeholder="Search materials..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              autoCapitalize="none"
+            />
+            {searchTerm && <button onClick={() => setSearchTerm("")} style={s.clearBtn}>✕</button>}
+          </div>
+
+          {/* Search results */}
+          {searchTerm.length > 1 && (
+            <div style={s.searchResults}>
+              {filteredItems.length === 0 && <div style={s.noResults}>No items found</div>}
+              {filteredItems.map(item => (
+                <div key={item.id} style={s.searchItem}>
+                  <div style={{ flex: 1 }}>
+                    <div style={s.itemName}>{item.name}</div>
+                    <div style={s.itemId}>{item.id} · {item.category}</div>
                   </div>
                   <input
-                    style={styles.inputField}
+                    style={s.qtyInput}
                     type="number"
-                    step="any"
+                    inputMode="numeric"
                     placeholder="0"
-                    value={formData[category]?.[item.id]?.quantity || ""}
-                    onChange={(e) =>
-                      handleInputChange(
-                        category,
-                        item.name,
-                        e.target.value,
-                        item.id
-                      )
-                    }
+                    value={formData[item.category]?.[item.id]?.quantity || ""}
+                    onChange={e => handleInputChange(item.category, item.name, e.target.value, item.id)}
                   />
                 </div>
               ))}
             </div>
           )}
+
+          {/* Categories */}
+          {!searchTerm && Object.entries(items).map(([category, itemList], index) => {
+            const catCount = Object.values(formData[category] || {}).filter(i => i.quantity && i.quantity !== 0).length;
+            const isOpen = openCategory === category;
+            return (
+              <div key={category} style={s.catBox}>
+                <button style={{ ...s.catHeader, backgroundColor: index % 2 === 0 ? "#033f85" : "#1e2a4a" }}
+                  onClick={() => setOpenCategory(isOpen ? null : category)}>
+                  <span style={s.catName}>{category}</span>
+                  <div style={s.catRight}>
+                    {catCount > 0 && <span style={s.catBadge}>{catCount}</span>}
+                    <span style={s.catChevron}>{isOpen ? "−" : "+"}</span>
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div style={s.itemsWrap} ref={itemsRef}>
+                    {itemList.map(item => {
+                      const val = formData[category]?.[item.id]?.quantity;
+                      const hasValue = val && val !== 0;
+                      return (
+                        <div key={item.id} style={{ ...s.itemRow, ...(hasValue ? s.itemRowActive : {}) }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={s.itemName}>{item.name}</div>
+                            <div style={s.itemId}>{item.id}</div>
+                          </div>
+                          <input
+                            style={{ ...s.qtyInput, ...(hasValue ? s.qtyInputActive : {}) }}
+                            type="number"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={val || ""}
+                            onChange={e => handleInputChange(category, item.name, e.target.value, item.id)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Bottom action bar */}
+          <div style={s.bottomBar}>
+            <button onClick={handleSaveDraft} disabled={saving} style={s.saveBtn}>
+              {saving ? "..." : "💾 Save"}
+            </button>
+            <button onClick={handleReview} style={s.reviewBtn}>
+              Review & Send {totalItems > 0 ? `(${totalItems})` : ""}
+            </button>
+          </div>
         </div>
-      ))}
+      )}
 
-      <div style={styles.actionButtons}>
-        <button 
-          onClick={handleSaveDraft} 
-          style={styles.saveDraftButton}
-          disabled={saving}
-        >
-          {saving ? "Saving..." : "💾 Save Draft"}
-        </button>
-        <button onClick={handleReview} style={styles.reviewButton}>
-          ✅ Review & Send
-        </button>
-      </div>
-
-      {draftId && (
-        <p style={styles.draftInfo}>
-          ✓ This draft is saved. You can close this page and come back later.
-        </p>
+      {/* Vendor Bottom Sheet */}
+      {showVendorSheet && (
+        <div style={s.overlay} onClick={() => setShowVendorSheet(false)}>
+          <div style={s.sheet} onClick={e => e.stopPropagation()}>
+            <div style={s.sheetHandle} />
+            <p style={s.sheetTitle}>Select Vendor</p>
+            <div style={s.sheetScroll}>
+              <button style={s.sheetItem} onClick={() => { handleUserChange("vender", ""); setShowVendorSheet(false); }}>
+                <span style={{ color: "#999" }}>None</span>
+              </button>
+              {VENDORS.map(v => (
+                <button key={v} style={{ ...s.sheetItem, ...(userInfo.vender === v ? s.sheetItemActive : {}) }}
+                  onClick={() => { handleUserChange("vender", v); setShowVendorSheet(false); }}>
+                  {v} {userInfo.vender === v ? "✓" : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-const styles = {
-  container: { 
-    padding: "1rem", 
-    maxWidth: "600px", 
-    margin: "0 auto", 
-    backgroundColor: "#f4f7f9", 
-    minHeight: "100vh", 
-    fontFamily: "sans-serif" 
-  },
-  topBar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "1.5rem",
-    flexWrap: "wrap",
-    gap: "1rem",
-  },
-  heading: { 
-    color: "#333", 
-    fontSize: "1.5rem",
-    margin: 0,
-  },
-  viewDraftsButton: {
-    padding: "8px 16px",
-    backgroundColor: "#6c757d",
-    color: "white",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "0.9rem",
-    fontWeight: "600",
-  },
-  sectionTitle: { 
-    fontSize: "1.1rem", 
-    marginBottom: "10px", 
-    color: "#555", 
-    fontWeight: "bold" 
-  },
-  inputContainer: { 
-    backgroundColor: "#fff", 
-    padding: "1.2rem", 
-    borderRadius: "10px", 
-    boxShadow: "0 2px 5px rgba(0,0,0,0.1)", 
-    marginBottom: "1.5rem" 
-  },
-  label: { 
-    display: "block", 
-    marginBottom: "5px", 
-    fontSize: "0.9rem", 
-    fontWeight: "600" 
-  },
-  fullInput: { 
-    width: "100%", 
-    padding: "10px", 
-    marginBottom: "15px", 
-    borderRadius: "5px", 
-    border: "1px solid #ccc", 
-    boxSizing: "border-box" 
-  },
-  categoryBox: { 
-    marginBottom: "10px", 
-    borderRadius: "8px", 
-    overflow: "hidden", 
-    boxShadow: "0 2px 4px rgba(0,0,0,0.05)" 
-  },
-  header: { 
-    padding: "12px 15px", 
-    color: "#fff", 
-    cursor: "pointer", 
-    display: "flex", 
-    justifyContent: "space-between", 
-    fontWeight: "bold" 
-  },
-  itemList: { 
-    padding: "10px", 
-    backgroundColor: "#fff", 
-    maxHeight: "400px", 
-    overflowY: "auto" 
-  },
-  itemRow: { 
-    display: "flex", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    padding: "10px 0", 
-    borderBottom: "1px solid #eee" 
-  },
-  inputField: { 
-    width: "80px", 
-    padding: "8px", 
-    textAlign: "center", 
-    border: "1px solid #ccc", 
-    borderRadius: "5px" 
-  },
-  actionButtons: { 
-    display: "flex",
-    gap: "10px",
-    marginTop: "2rem",
-  },
-  saveDraftButton: {
-    flex: 1,
-    padding: "15px",
-    backgroundColor: "#6c757d",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    fontWeight: "bold",
-    cursor: "pointer",
-    fontSize: "1rem",
-  },
-  reviewButton: { 
-    flex: 1,
-    padding: "15px", 
-    backgroundColor: "#28a745", 
-    color: "white",
-    border: "none", 
-    borderRadius: "8px", 
-    fontWeight: "bold", 
-    cursor: "pointer", 
-    fontSize: "1rem",
-  },
-  draftInfo: {
-    textAlign: "center",
-    marginTop: "1rem",
-    color: "#28a745",
-    fontWeight: "600",
-    fontSize: "0.95rem",
-  },
+const s = {
+  root: { maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: "#f0f2f7", fontFamily: "'DM Sans', sans-serif", paddingBottom: 100 },
+  header: { background: "#033f85", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 100 },
+  headerTitle: { color: "#fff", fontWeight: 700, fontSize: 18 },
+  draftBadge: { color: "#7eb8ff", fontSize: 11, marginTop: 2 },
+  draftsBtn: { background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", padding: "7px 14px", borderRadius: 20, fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+
+  stepBar: { display: "flex", gap: 6, padding: "12px 16px", background: "#fff", borderBottom: "1px solid #e8eaf0" },
+  stepPill: { flex: 1, textAlign: "center", padding: "6px 4px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: "#eef0f5", color: "#888" },
+  stepActive: { background: "#033f85", color: "#fff" },
+  stepDone: { background: "#d4edda", color: "#28a745" },
+
+  card: { margin: 16, background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" },
+  cardLabel: { fontSize: 13, fontWeight: 700, color: "#444", marginBottom: 10, marginTop: 16, textTransform: "uppercase", letterSpacing: "0.5px" },
+
+  input: { display: "block", width: "100%", padding: "13px 15px", marginBottom: 10, border: "1.5px solid #e0e3ed", borderRadius: 12, fontSize: 15, fontFamily: "inherit", boxSizing: "border-box", background: "#fafbfd", outline: "none" },
+
+  storePicker: { display: "flex", gap: 8, marginBottom: 4 },
+  storeBtn: { flex: 1, padding: "12px 4px", border: "2px solid #e0e3ed", borderRadius: 12, background: "#fafbfd", cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 },
+  storeBtnActive: { border: "2px solid #033f85", background: "#eef3ff" },
+  storeLetter: { fontWeight: 700, fontSize: 14, color: "#033f85" },
+  storeSub: { fontSize: 11, color: "#888" },
+
+  vendorPickerBtn: { width: "100%", padding: "13px 15px", border: "1.5px solid #e0e3ed", borderRadius: 12, background: "#fafbfd", fontFamily: "inherit", fontSize: 15, textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", marginBottom: 4, boxSizing: "border-box" },
+
+  primaryBtn: { display: "block", width: "100%", marginTop: 20, padding: "15px", background: "#033f85", color: "#fff", border: "none", borderRadius: 14, fontSize: 16, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" },
+
+  summaryBar: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#fff", borderBottom: "1px solid #e8eaf0" },
+  summaryText: { fontSize: 13, fontWeight: 600, color: "#444" },
+  editBtn: { fontSize: 12, color: "#033f85", background: "none", border: "none", fontFamily: "inherit", fontWeight: 600, cursor: "pointer", padding: "4px 0" },
+
+  searchWrap: { position: "relative", margin: "12px 16px 8px", display: "flex", alignItems: "center", background: "#fff", borderRadius: 12, border: "1.5px solid #e0e3ed", padding: "0 12px" },
+  searchIcon: { fontSize: 15, marginRight: 8 },
+  searchInput: { flex: 1, border: "none", outline: "none", padding: "12px 0", fontSize: 15, fontFamily: "inherit", background: "transparent" },
+  clearBtn: { background: "none", border: "none", fontSize: 14, color: "#999", cursor: "pointer", padding: 4 },
+
+  searchResults: { margin: "0 16px 8px", background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
+  noResults: { padding: 20, textAlign: "center", color: "#999", fontSize: 14 },
+
+  catBox: { margin: "6px 16px", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" },
+  catHeader: { width: "100%", border: "none", padding: "14px 16px", color: "#fff", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "inherit" },
+  catName: { fontWeight: 700, fontSize: 14 },
+  catRight: { display: "flex", alignItems: "center", gap: 8 },
+  catBadge: { background: "#fff", color: "#033f85", borderRadius: 10, fontSize: 11, fontWeight: 700, padding: "2px 8px" },
+  catChevron: { fontSize: 18, color: "rgba(255,255,255,0.8)" },
+
+  itemsWrap: { background: "#fff", maxHeight: 320, overflowY: "auto" },
+  itemRow: { display: "flex", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid #f0f2f7", gap: 10 },
+  itemRowActive: { background: "#eef3ff" },
+  searchItem: { display: "flex", alignItems: "center", padding: "12px 14px", borderBottom: "1px solid #f5f5f5", gap: 10 },
+  itemName: { fontSize: 13, fontWeight: 600, color: "#222", lineHeight: 1.3 },
+  itemId: { fontSize: 11, color: "#999", marginTop: 2 },
+  qtyInput: { width: 70, padding: "9px 8px", textAlign: "center", border: "1.5px solid #e0e3ed", borderRadius: 10, fontSize: 15, fontFamily: "inherit", background: "#fafbfd", boxSizing: "border-box", outline: "none" },
+  qtyInputActive: { border: "1.5px solid #033f85", background: "#eef3ff", color: "#033f85", fontWeight: 700 },
+
+  bottomBar: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#fff", borderTop: "1px solid #e8eaf0", padding: "12px 16px", display: "flex", gap: 10, boxSizing: "border-box", zIndex: 100 },
+  saveBtn: { padding: "13px 18px", background: "#f0f2f7", border: "none", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", color: "#444" },
+  reviewBtn: { flex: 1, padding: "13px", background: "#033f85", color: "#fff", border: "none", borderRadius: 12, fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer" },
+
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "flex-end" },
+  sheet: { width: "100%", maxWidth: 480, margin: "0 auto", background: "#fff", borderRadius: "20px 20px 0 0", maxHeight: "70vh", display: "flex", flexDirection: "column" },
+  sheetHandle: { width: 36, height: 4, background: "#ddd", borderRadius: 2, margin: "12px auto 4px" },
+  sheetTitle: { fontSize: 16, fontWeight: 700, textAlign: "center", padding: "8px 0 12px", borderBottom: "1px solid #f0f0f0", margin: 0 },
+  sheetScroll: { overflowY: "auto", flex: 1 },
+  sheetItem: { display: "block", width: "100%", padding: "14px 20px", border: "none", borderBottom: "1px solid #f5f5f5", background: "none", fontFamily: "inherit", fontSize: 14, textAlign: "left", cursor: "pointer" },
+  sheetItemActive: { background: "#eef3ff", fontWeight: 700, color: "#033f85" },
 };
