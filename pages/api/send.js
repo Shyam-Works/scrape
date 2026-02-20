@@ -39,7 +39,7 @@ export default async function handler(req, res) {
             <td align="center">${item.quantity}</td>
             <td></td>
             <td></td>
-            <td align="center">0003</td>
+            <td align="center">${store}</td>
             <td align="center">TD02</td>
             <td align="center">0010</td>
             <td></td>
@@ -88,17 +88,14 @@ export default async function handler(req, res) {
   };
 
   try {
-    // Send email
     await transporter.sendMail(mailOptions);
 
-    // Mark draft as sent if _id is provided
     if (_id) {
       await Draft.findByIdAndUpdate(_id, {
         status: 'sent',
         sentAt: new Date(),
       });
     } else {
-      // Create a new record marked as sent
       const draft = new Draft({
         name,
         email,
