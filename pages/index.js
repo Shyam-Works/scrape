@@ -54,16 +54,16 @@ export default function Home() {
   const handleUserChange = (field, value) => setUserInfo(prev => ({ ...prev, [field]: value }));
 
   const handleInputChange = (category, itemName, value, id) => {
-    let numValue = parseFloat(value);
-    if (!isNaN(numValue) && numValue > 0) numValue = numValue * -1;
-    setFormData(prev => ({
-      ...prev,
-      [category]: {
-        ...(prev[category] || {}),
-        [id]: { id, name: itemName, quantity: isNaN(numValue) ? 0 : numValue },
-      },
-    }));
-  };
+  let numValue = parseFloat(parseFloat(value).toFixed(2));
+  if (!isNaN(numValue) && numValue > 0) numValue = numValue * -1;
+  setFormData(prev => ({
+    ...prev,
+    [category]: {
+      ...(prev[category] || {}),
+      [id]: { id, name: itemName, quantity: isNaN(numValue) ? 0 : numValue },
+    },
+  }));
+};
 
   const totalItems = Object.values(formData).reduce((acc, cat) => {
     return acc + Object.values(cat).filter(i => i.quantity && i.quantity !== 0).length;
@@ -194,13 +194,14 @@ export default function Home() {
                     <div style={s.itemId}>{item.id} · {item.category}</div>
                   </div>
                   <input
-                    style={s.qtyInput}
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="0"
-                    value={formData[item.category]?.[item.id]?.quantity || ""}
-                    onChange={e => handleInputChange(item.category, item.name, e.target.value, item.id)}
-                  />
+  style={s.qtyInput}
+  type="number"
+  inputMode="decimal"
+  step="0.01"
+  placeholder="0"
+  value={formData[item.category]?.[item.id]?.quantity || ""}
+  onChange={e => handleInputChange(item.category, item.name, e.target.value, item.id)}
+/>
                 </div>
               ))}
             </div>
@@ -233,13 +234,14 @@ export default function Home() {
                             <div style={s.itemId}>{item.id}</div>
                           </div>
                           <input
-                            style={{ ...s.qtyInput, ...(hasValue ? s.qtyInputActive : {}) }}
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="0"
-                            value={val || ""}
-                            onChange={e => handleInputChange(category, item.name, e.target.value, item.id)}
-                          />
+  style={{ ...s.qtyInput, ...(hasValue ? s.qtyInputActive : {}) }}
+  type="number"
+  inputMode="decimal"
+  step="0.01"
+  placeholder="0"
+  value={val || ""}
+  onChange={e => handleInputChange(category, item.name, e.target.value, item.id)}
+/>
                         </div>
                       );
                     })}
